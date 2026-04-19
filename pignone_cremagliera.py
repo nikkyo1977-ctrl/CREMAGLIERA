@@ -364,6 +364,7 @@ class RackPinionVisualizer(tk.Tk):
         self.title("Tool di Analisi e Ottimizzazione Pignone-Cremagliera")
         self.geometry("1400x900")
         
+        self.diag_win = None
         self.create_widgets()
         self.update_plot()
         
@@ -425,6 +426,8 @@ class RackPinionVisualizer(tk.Tk):
         ttk.Button(btn_frame, text="Carica Setup 2 (Ottimizzato Plastica)", command=self.preset_optimized).pack(side=tk.TOP, fill=tk.X, pady=2)
         ttk.Button(btn_frame, text="Avvia/Ferma Animazione", command=self.toggle_animation).pack(side=tk.TOP, fill=tk.X, pady=2)
         ttk.Button(btn_frame, text="Esporta DXF", command=self.export_dxf).pack(side=tk.TOP, fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text="Diagnostica Cinematica",
+                   command=self.open_diagnostics).pack(side=tk.TOP, fill=tk.X, pady=2)
         self.is_animating = False
             
         res_frame = ttk.LabelFrame(ctrl_frame, text="Analisi Cinematica e Geometrica")
@@ -613,6 +616,8 @@ class RackPinionVisualizer(tk.Tk):
         
         self._draw_contact_overlay(self.ax_zoom, kin, rot)
         self._draw_kinematic_diagram(kin, rot)
+        if self.diag_win is not None and self.diag_win.winfo_exists():
+            self.diag_win.refresh(kin, z)
         self.fig.tight_layout()
         
         # Identificazione Punti di Contatto (Proximity Detection)
@@ -910,6 +915,18 @@ class RackPinionVisualizer(tk.Tk):
             ax.fill(xs_poly, ys_poly, color='#cc0052', alpha=0.2, label='Cremagliera in Plastica')
             if ax == self.ax:
                 self.poly_rack = list(zip(xs_poly, ys_poly))
+
+    def open_diagnostics(self):
+        if self.diag_win is not None and self.diag_win.winfo_exists():
+            self.diag_win.lift()
+        else:
+            self.diag_win = DiagnosticWindow(self)
+        try:
+            params = self._params_from_vars()
+            kin = compute_kinematics(params)
+            self.diag_win.refresh(kin, params['z'])
+        except Exception:
+            pass
 
     def export_dxf(self):
         if not hasattr(self, 'poly_pinion') or not hasattr(self, 'poly_rack'):
