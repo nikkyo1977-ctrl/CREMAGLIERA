@@ -315,12 +315,13 @@ class RackPinionVisualizer(tk.Tk):
         plot_frame = tk.Frame(self)
         plot_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
-        self.fig = Figure(figsize=(12, 7), dpi=100)
-        self.ax = self.fig.add_subplot(1, 2, 1)
-        self.ax_zoom = self.fig.add_subplot(1, 2, 2)
-        
+        self.fig = Figure(figsize=(18, 7), dpi=100)
+        self.ax = self.fig.add_subplot(1, 3, 1)
+        self.ax_zoom = self.fig.add_subplot(1, 3, 2)
+        self.ax_kinem = self.fig.add_subplot(1, 3, 3)
+
         self.fig.patch.set_facecolor('#fafafa')
-        for a in [self.ax, self.ax_zoom]:
+        for a in [self.ax, self.ax_zoom, self.ax_kinem]:
             a.set_facecolor('#ffffff')
             
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
@@ -473,6 +474,7 @@ class RackPinionVisualizer(tk.Tk):
         self.ax_zoom.set_ylim(-r - zoom_w/2, -r + zoom_w/2)
         self.ax_zoom.set_title(f"Dettaglio Contatto (Zoom {zoom_w}x{zoom_w}mm)", fontsize=10, fontweight='bold')
         
+        self._draw_kinematic_diagram(kin, rot)
         self.fig.tight_layout()
         
         # Identificazione Punti di Contatto (Proximity Detection)
@@ -509,6 +511,65 @@ class RackPinionVisualizer(tk.Tk):
 
         self.canvas.draw()
         
+    def _draw_kinematic_diagram(self, kin, rot: float):
+        ax = self.ax_kinem
+        ax.clear()
+        ax.set_facecolor('#ffffff')
+
+        # Asse x: spostamento REALE cremagliera = r * theta
+        # In un passo completo theta=[0, 2pi/z], la cremagliera avanza di pi*m
+        disp = kin.r * kin.theta_arr      # [mm], va da 0 a pi*m
+        disp_end = disp[-1] if len(disp) > 0 else 1.0
+
+        # u_sx = 0 (pitch point) quando rb_sx*theta = ga_sx
+        # rack displacement a quel punto = r*(ga_sx/rb_sx) = ga_sx/cos(alpha_sx)
+        alpha_sx_rad = np.arccos(max(kin.rb_sx / kin.r, 0.0)) if kin.r > 1e-9 else 0.0
+        zero_disp_sx = (kin.ga_sx / np.cos(alpha_sx_rad)
+                        if np.cos(alpha_sx_rad) > 1e-9 else disp_end / 2)
+
+        # Sfondo zone accesso/recesso
+        ax.axvspan(0, min(zero_disp_sx, disp_end),
+                   alpha=0.12, color='#ff8888', label='Accesso (ga)')
+        ax.axvspan(min(zero_disp_sx, disp_end), disp_end,
+                   alpha=0.12, color='#88cc88', label='Recesso (gf)')
+
+        # Curve u(theta): posizione contatto lungo LoA
+        ax.plot(disp, kin.u_sx_arr, '-', color='#0052cc', linewidth=1.8, label='u_sx(θ) [mm]')
+        ax.plot(disp, kin.u_dx_arr, '--', color='#cc0052', linewidth=1.2, label='u_dx(θ) [mm]')
+        ax.axhline(0, color='gray', linewidth=0.8, linestyle=':')
+
+        # Asse Y destro: |vs/vp|
+        ax2 = ax.twinx()
+        ax2.plot(disp, kin.vs_arr, '-', color='#cc6600', linewidth=1.2, alpha=0.7,
+                 label='|vs/vp|')
+        ax2.set_ylabel('|vs/vp| [-]', fontsize=8, color='#cc6600')
+        ax2.tick_params(axis='y', labelcolor='#cc6600', labelsize=7)
+        ax2.set_ylim(bottom=0)
+
+        # Zona doppio contatto sx (sfondo grigio)
+        pitch_angle_rad = kin.theta_arr[-1] if len(kin.theta_arr) > 0 else 1.0
+        if kin.eps_sx > 1.0:
+            double_disp_end = kin.r * (kin.eps_sx - 1.0) * pitch_angle_rad
+            ax.axvspan(0, min(double_disp_end, disp_end), alpha=0.15, color='gray',
+                       label=f'Doppio cont. ({(kin.eps_sx-1)*100:.0f}%)')
+
+        # Linea verticale = posizione angolare corrente
+        rot_mod = rot % pitch_angle_rad if pitch_angle_rad > 1e-9 else 0.0
+        current_disp = kin.r * rot_mod
+        ax.axvline(current_disp, color='black', linewidth=1.5, linestyle='--', alpha=0.7)
+
+        ax.set_xlabel('Spostamento cremagliera [mm]', fontsize=8)
+        ax.set_ylabel('u — pos. contatto lungo LoA [mm]', fontsize=8)
+        ax.set_title(
+            f'Cinematica 1 Passo  ε_sx={kin.eps_sx:.3f} | ε_dx={kin.eps_dx:.3f}',
+            fontsize=9, fontweight='bold')
+        ax.legend(loc='lower right', fontsize='xx-small', framealpha=0.6)
+        ax.set_xlim(0, disp_end)
+        ax.tick_params(labelsize=7)
+        step = max(0.1, round(disp_end / 5, 1))
+        ax.xaxis.set_major_locator(MultipleLocator(step))
+        ax.grid(which='major', linestyle='--', alpha=0.3)
+
     def draw_pinion(self, ax, m, z, alpha_sx, alpha_dx, x, delta_s, rf, ra, rot, rho_ap, rho_fp):
         r = m * z / 2.0
         sp = m * (np.pi / 2.0 + x * np.tan(alpha_sx) + x * np.tan(alpha_dx)) - delta_s
