@@ -127,6 +127,17 @@ def compute_kinematics(params: dict) -> KinResult:
     n_pairs_sx_arr = _n_pairs(eps_sx, pitch_angle)
     n_pairs_dx_arr = _n_pairs(eps_dx, pitch_angle)
 
+    # --- Diagnostica cinematica ---
+    # Undercut: z < 2*(1-x)/sin^2(alpha)
+    z_min_sx = 2.0 * (1.0 - x) / np.sin(alpha_sx)**2 if alpha_sx > 1e-6 else 0.0
+    z_min_dx = 2.0 * (1.0 - x) / np.sin(alpha_dx)**2 if alpha_dx > 1e-6 else 0.0
+    undercut_sx = bool(z < z_min_sx)
+    undercut_dx = bool(z < z_min_dx)
+
+    # Interferenza testa cremagliera: ga > r*sin(alpha) (rack tip oltre cerchio base)
+    interference_rack_tip_sx = bool(ga_sx > r * np.sin(alpha_sx))
+    interference_rack_tip_dx = bool(ga_dx > r * np.sin(alpha_dx))
+
     return KinResult(
         r=r, ra=ra, rf=rf, rb_sx=rb_sx, rb_dx=rb_dx, H=H, da=da,
         ga_sx=ga_sx, gf_sx=gf_sx, ga_dx=ga_dx, gf_dx=gf_dx,
@@ -136,6 +147,10 @@ def compute_kinematics(params: dict) -> KinResult:
         vs_max_tip_pin_dx=vs_max_tip_pin_dx,
         vs_max_tip_rack_sx=vs_max_tip_rack_sx,
         vs_max_tip_rack_dx=vs_max_tip_rack_dx,
+        z_min_sx=z_min_sx, z_min_dx=z_min_dx,
+        undercut_sx=undercut_sx, undercut_dx=undercut_dx,
+        interference_rack_tip_sx=interference_rack_tip_sx,
+        interference_rack_tip_dx=interference_rack_tip_dx,
         theta_arr=theta_arr,
         u_sx_arr=u_sx_arr,
         u_dx_arr=u_dx_arr,

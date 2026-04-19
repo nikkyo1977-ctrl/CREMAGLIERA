@@ -154,3 +154,44 @@ def test_n_pairs_minimum_one():
     k = compute_kinematics(params)
     if k.eps_sx >= 1.0:
         assert np.all(k.n_pairs_sx_arr >= 1)
+
+
+def test_undercut_detection():
+    """z=4, x=0, alpha=20°: deve rilevare sottosquadro (z < z_min)."""
+    params = make_params(m=1.0, z=4, alpha_sx_deg=20.0, x=0.0)
+    k = compute_kinematics(params)
+    alpha = np.radians(20.0)
+    z_min_expected = 2.0 * (1.0 - 0.0) / np.sin(alpha)**2
+    assert abs(k.z_min_sx - z_min_expected) < 1e-6
+    assert k.undercut_sx is True
+
+
+def test_no_undercut_with_positive_shift():
+    """x=0.5 su z=10 deve eliminare il rischio di undercut.
+
+    Con alpha=20° e x=0.5: z_min = 2*(1-0.5)/sin²(20°) ≈ 8.55.
+    z=10 > z_min, quindi nessun undercut.
+    """
+    params = make_params(m=1.0, z=10, alpha_sx_deg=20.0, x=0.5)
+    k = compute_kinematics(params)
+    assert k.undercut_sx is False
+
+
+def test_interference_rack_tip():
+    """ga > r*sin(alpha): interferenza della testa cremagliera."""
+    # Forzare ga grande con ha_cr elevato e alpha piccolo
+    params = make_params(m=1.0, z=6, alpha_sx_deg=10.0, x=-0.5, ha_cr_coeff=1.5)
+    k = compute_kinematics(params)
+    alpha = np.radians(10.0)
+    r = 1.0 * 6 / 2.0
+    limit = r * np.sin(alpha)
+    if k.ga_sx > limit:
+        assert k.interference_rack_tip_sx is True
+
+
+def test_no_interference_standard():
+    """Setup standard z=20, m=1, alpha=20°, x=0: nessuna interferenza."""
+    params = make_params(m=1.0, z=20, alpha_sx_deg=20.0, x=0.0)
+    k = compute_kinematics(params)
+    assert k.interference_rack_tip_sx is False
+    assert k.undercut_sx is False
