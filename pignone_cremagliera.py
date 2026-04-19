@@ -326,6 +326,18 @@ class RackPinionVisualizer(tk.Tk):
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         
+    def _params_from_vars(self) -> dict:
+        return dict(
+            m=self.vars['m'].get(),
+            z=self.vars['z'].get(),
+            alpha_sx_deg=self.vars['alpha_sx'].get(),
+            alpha_dx_deg=self.vars['alpha_dx'].get(),
+            x=self.vars['x'].get(),
+            ha_cr_coeff=self.vars['ha_cr_coeff'].get(),
+            c_coeff=self.vars['c_coeff'].get(),
+            delta_s=self.vars['delta_s'].get(),
+        )
+
     def preset_standard(self):
         self.vars['m'].set(1.0)
         self.vars['z'].set(10)
@@ -370,62 +382,50 @@ class RackPinionVisualizer(tk.Tk):
             
     def update_plot(self, *args):
         try:
-            m = self.vars['m'].get()
-            z = self.vars['z'].get()
-            alpha_sx = np.radians(self.vars['alpha_sx'].get())
-            alpha_dx = np.radians(self.vars['alpha_dx'].get())
-            x = self.vars['x'].get()
-            ha_cr = self.vars['ha_cr_coeff'].get() * m
-            c = self.vars['c_coeff'].get() * m
-            delta_s = self.vars['delta_s'].get()
+            params = self._params_from_vars()
             rot = np.radians(self.vars['rot_deg'].get())
-            
-            rho_ap = self.vars['rho_ap_coeff'].get() * m
-            rho_fp = self.vars['rho_fp_coeff'].get() * m
-            rho_ac = self.vars['rho_ac_coeff'].get() * m
-            rho_fc = self.vars['rho_fc_coeff'].get() * m
+            rho_ap = self.vars['rho_ap_coeff'].get() * params['m']
+            rho_fp = self.vars['rho_fp_coeff'].get() * params['m']
+            rho_ac = self.vars['rho_ac_coeff'].get() * params['m']
+            rho_fc = self.vars['rho_fc_coeff'].get() * params['m']
         except tk.TclError:
-            return  
-            
-        r = m * z / 2.0
-        rb_sx = r * np.cos(alpha_sx)
-        rb_dx = r * np.cos(alpha_dx)
-        hap = (1.0 + x) * m
-        ra = r + hap
-        da = 2 * ra
-        hfp = ha_cr + c - x * m
-        rf = r - hfp
-        
-        H = r + x * m
-        
-        ga_sx = ha_cr / np.sin(alpha_sx) if alpha_sx != 0 else 0
-        gf_sx = np.sqrt(ra**2 - rb_sx**2) - r * np.sin(alpha_sx) if ra > rb_sx else 0
-        pb_sx = np.pi * m * np.cos(alpha_sx)
-        eps_alpha_sx = (ga_sx + gf_sx) / pb_sx if pb_sx != 0 else 0
+            return
 
-        ga_dx = ha_cr / np.sin(alpha_dx) if alpha_dx != 0 else 0
-        gf_dx = np.sqrt(ra**2 - rb_dx**2) - r * np.sin(alpha_dx) if ra > rb_dx else 0
-        pb_dx = np.pi * m * np.cos(alpha_dx)
-        eps_alpha_dx = (ga_dx + gf_dx) / pb_dx if pb_dx != 0 else 0
-        
-        L = np.pi * m * z
-        sp = m * (np.pi / 2.0 + x * np.tan(alpha_sx) + x * np.tan(alpha_dx)) - delta_s
-        scr = m * np.pi / 2.0 + delta_s
-        
-        self.res_labels['Interasse di montaggio (H)'].config(text=f"{H:.3f} mm")
-        self.res_labels['Ricoprimento (ε_α) [SX | DX]'].config(text=f"{eps_alpha_sx:.3f} | {eps_alpha_dx:.3f}")
-        color_eps = 'red' if (eps_alpha_sx < 1.0 or eps_alpha_dx < 1.0) else 'forestgreen'
+        kin = compute_kinematics(params)
+        m = params['m']
+        z = params['z']
+        r, ra, rf, H = kin.r, kin.ra, kin.rf, kin.H
+        rb_sx, rb_dx = kin.rb_sx, kin.rb_dx
+        alpha_sx = np.radians(params['alpha_sx_deg'])
+        alpha_dx = np.radians(params['alpha_dx_deg'])
+        x = params['x']
+        delta_s = params['delta_s']
+        ha_cr = params['ha_cr_coeff'] * m
+        c = params['c_coeff'] * m
+
+        self.res_labels['Interasse di montaggio (H)'].config(text=f"{kin.H:.3f} mm")
+        self.res_labels['Ricoprimento (ε_α) [SX | DX]'].config(
+            text=f"{kin.eps_sx:.3f} | {kin.eps_dx:.3f}")
+        color_eps = 'red' if (kin.eps_sx < 1.0 or kin.eps_dx < 1.0) else 'forestgreen'
         self.res_labels['Ricoprimento (ε_α) [SX | DX]'].config(foreground=color_eps)
-        self.res_labels['Tratto Accesso (ga) [SX | DX]'].config(text=f"{ga_sx:.3f} | {ga_dx:.3f} mm")
-        self.res_labels['Tratto Recesso (gf) [SX | DX]'].config(text=f"{gf_sx:.3f} | {gf_dx:.3f} mm")
-        asym_sx = gf_sx/ga_sx if ga_sx!=0 else 0
-        asym_dx = gf_dx/ga_dx if ga_dx!=0 else 0
-        self.res_labels['Asimmetria (gf/ga) [SX | DX]'].config(text=f"{asym_sx:.3f} | {asym_dx:.3f}")
-        self.res_labels['Spostamento lineare per giro (L)'].config(text=f"{L:.3f} mm")
-        self.res_labels['Diametro Esterno Pignone (da)'].config(text=f"{da:.3f} mm")
-        self.res_labels['Diametro Base (db) [SX | DX]'].config(text=f"{2*rb_sx:.3f} | {2*rb_dx:.3f} mm")
-        self.res_labels['Spessore Pignone Pitch (sp)'].config(text=f"{sp:.3f} mm")
-        self.res_labels['Spessore Crem. Datum (scr)'].config(text=f"{scr:.3f} mm")
+        self.res_labels['Tratto Accesso (ga) [SX | DX]'].config(
+            text=f"{kin.ga_sx:.3f} | {kin.ga_dx:.3f} mm")
+        self.res_labels['Tratto Recesso (gf) [SX | DX]'].config(
+            text=f"{kin.gf_sx:.3f} | {kin.gf_dx:.3f} mm")
+        asym_sx = kin.gf_sx / kin.ga_sx if kin.ga_sx > 1e-9 else 0.0
+        asym_dx = kin.gf_dx / kin.ga_dx if kin.ga_dx > 1e-9 else 0.0
+        self.res_labels['Asimmetria (gf/ga) [SX | DX]'].config(
+            text=f"{asym_sx:.3f} | {asym_dx:.3f}")
+        self.res_labels['Spostamento lineare per giro (L)'].config(
+            text=f"{kin.L:.3f} mm")
+        self.res_labels['Diametro Esterno Pignone (da)'].config(
+            text=f"{kin.da:.3f} mm")
+        self.res_labels['Diametro Base (db) [SX | DX]'].config(
+            text=f"{2*kin.rb_sx:.3f} | {2*kin.rb_dx:.3f} mm")
+        self.res_labels['Spessore Pignone Pitch (sp)'].config(
+            text=f"{kin.sp:.3f} mm")
+        self.res_labels['Spessore Crem. Datum (scr)'].config(
+            text=f"{kin.scr:.3f} mm")
         
         for a in [self.ax, self.ax_zoom]:
             a.clear()
