@@ -100,6 +100,33 @@ def compute_kinematics(params: dict) -> KinResult:
     vs_max_tip_rack_sx = abs(ga_sx) / r if r > 1e-9 else 0.0
     vs_max_tip_rack_dx = abs(ga_dx) / r if r > 1e-9 else 0.0
 
+    # --- Array cinematici su un passo (200 punti) ---
+    N = 200
+    pitch_angle = 2.0 * np.pi / z
+    theta_arr = np.linspace(0.0, pitch_angle, N)
+
+    # u(theta) = rb * theta - ga  (posizione contatto lungo LoA, misurata dal pitch point)
+    # u < 0 = zona accesso, u > 0 = zona recesso
+    u_sx_arr = rb_sx * theta_arr - ga_sx
+    u_dx_arr = rb_dx * theta_arr - ga_dx
+
+    # |v_s/v_p|(theta) = max(|u_sx|, |u_dx|) / r
+    vs_arr = np.maximum(np.abs(u_sx_arr), np.abs(u_dx_arr)) / r if r > 1e-9 else np.zeros(N)
+
+    # n_pairs: quante coppie di denti sono in presa a ogni theta
+    # In un passo [0, pitch_angle]:
+    #   - coppia k=0 è sempre in presa (quando eps >= 1)
+    #   - coppia k=-1 (precedente) è ancora in presa per theta in [0, (eps-1)*pitch_angle]
+    # => zona doppio contatto = [0, (eps-1)*pitch_angle]
+    def _n_pairs(eps, pa):
+        if eps < 1.0:
+            return np.ones(N, dtype=int)   # eps < 1: gap, ma non blocchiamo il calcolo
+        double_theta = max(0.0, (eps - 1.0) * pa)
+        return np.where(theta_arr < double_theta, 2, 1).astype(int)
+
+    n_pairs_sx_arr = _n_pairs(eps_sx, pitch_angle)
+    n_pairs_dx_arr = _n_pairs(eps_dx, pitch_angle)
+
     return KinResult(
         r=r, ra=ra, rf=rf, rb_sx=rb_sx, rb_dx=rb_dx, H=H, da=da,
         ga_sx=ga_sx, gf_sx=gf_sx, ga_dx=ga_dx, gf_dx=gf_dx,
@@ -109,6 +136,12 @@ def compute_kinematics(params: dict) -> KinResult:
         vs_max_tip_pin_dx=vs_max_tip_pin_dx,
         vs_max_tip_rack_sx=vs_max_tip_rack_sx,
         vs_max_tip_rack_dx=vs_max_tip_rack_dx,
+        theta_arr=theta_arr,
+        u_sx_arr=u_sx_arr,
+        u_dx_arr=u_dx_arr,
+        vs_arr=vs_arr,
+        n_pairs_sx_arr=n_pairs_sx_arr,
+        n_pairs_dx_arr=n_pairs_dx_arr,
     )
 
 def add_fillet_to_paths(A, B, R):

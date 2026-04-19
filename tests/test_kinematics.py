@@ -104,3 +104,53 @@ def test_tooth_thickness_symmetric():
     alpha = np.radians(20.0)
     expected = 1.0 * (np.pi / 2 + 0.5 * (np.tan(alpha) + np.tan(alpha))) - 0.05
     assert abs(k.sp - expected) < 1e-9
+
+
+def test_kinematic_arrays_shape():
+    """Gli array hanno 200 punti, theta da 0 a un passo."""
+    params = make_params(m=1.0, z=10, x=0.0)
+    k = compute_kinematics(params)
+    pitch_angle = 2 * np.pi / 10
+    assert len(k.theta_arr) == 200
+    assert abs(k.theta_arr[0]) < 1e-9
+    assert abs(k.theta_arr[-1] - pitch_angle) < 1e-9
+    assert len(k.u_sx_arr) == 200
+    assert len(k.vs_arr) == 200
+    assert len(k.n_pairs_sx_arr) == 200
+
+
+def test_u_sx_range():
+    """u_sx va da -ga_sx a -ga_sx + pb_sx in un passo."""
+    params = make_params(m=1.0, z=10, alpha_sx_deg=20.0, x=0.0)
+    k = compute_kinematics(params)
+    assert abs(k.u_sx_arr[0] - (-k.ga_sx)) < 1e-9
+    assert abs(k.u_sx_arr[-1] - (-k.ga_sx + k.pb_sx)) < 1e-6
+
+
+def test_vs_zero_at_pitch_point():
+    """vs = 0 quando u = 0 (punto primitivo)."""
+    params = make_params(m=1.0, z=10, alpha_sx_deg=20.0, x=0.0)
+    k = compute_kinematics(params)
+    # Trovare l'indice dove u_sx è più vicino a zero
+    idx = np.argmin(np.abs(k.u_sx_arr))
+    assert abs(k.vs_arr[idx]) < 0.01  # tolleranza per la discretizzazione
+
+
+def test_n_pairs_double_contact_zone():
+    """La zona di doppio contatto ha lunghezza (eps-1)*pitch_angle."""
+    params = make_params(m=1.0, z=10, alpha_sx_deg=20.0, x=0.5)
+    k = compute_kinematics(params)
+    pitch_angle = 2 * np.pi / 10
+    double_len_expected = (k.eps_sx - 1) * pitch_angle
+    double_theta = k.theta_arr[k.n_pairs_sx_arr == 2]
+    if len(double_theta) > 0:
+        measured = double_theta[-1] - double_theta[0]
+        assert abs(measured - double_len_expected) < 0.05 * pitch_angle
+
+
+def test_n_pairs_minimum_one():
+    """n_pairs è sempre >= 1 quando eps >= 1."""
+    params = make_params(m=1.0, z=10, alpha_sx_deg=20.0, x=0.5)
+    k = compute_kinematics(params)
+    if k.eps_sx >= 1.0:
+        assert np.all(k.n_pairs_sx_arr >= 1)
