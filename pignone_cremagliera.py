@@ -221,6 +221,143 @@ def add_fillet_to_paths(A, B, R):
             
     return catA + arc_pts + catB
 
+
+class DiagnosticWindow(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Diagnostica Cinematica")
+        self.geometry("500x540")
+        self.resizable(False, False)
+        self._build_ui()
+
+    def _build_ui(self):
+        # Blocco 1: Limiti geometrici
+        f1 = ttk.LabelFrame(self, text="Limiti Geometrici")
+        f1.pack(fill=tk.X, padx=10, pady=5)
+        headers = ["Parametro", "Valore", "Limite", "Margine", "Stato"]
+        for c, h in enumerate(headers):
+            ttk.Label(f1, text=h, font=('Arial', 8, 'bold')).grid(
+                row=0, column=c, padx=4, pady=2)
+        self._g1_rows = {}
+        row_defs = [
+            ('z_min_sx', 'z min sx (undercut)'),
+            ('z_min_dx', 'z min dx (undercut)'),
+            ('ga_sx',    'ga sx [mm]'),
+            ('ga_dx',    'ga dx [mm]'),
+        ]
+        for i, (key, label) in enumerate(row_defs, start=1):
+            ttk.Label(f1, text=label, font=('Arial', 8)).grid(
+                row=i, column=0, sticky='w', padx=4)
+            cells = {}
+            for j, col in enumerate(['val', 'lim', 'mar', 'sta']):
+                lbl = ttk.Label(f1, text='—', font=('Arial', 8), width=10)
+                lbl.grid(row=i, column=j+1, padx=4)
+                cells[col] = lbl
+            self._g1_rows[key] = cells
+
+        # Blocco 2: Check interferenza
+        f2 = ttk.LabelFrame(self, text="Check Interferenza")
+        f2.pack(fill=tk.X, padx=10, pady=5)
+        self._interf_labels = {}
+        interf_defs = [
+            ('rack_tip_sx', 'Testa cremagliera → pignone sx'),
+            ('rack_tip_dx', 'Testa cremagliera → pignone dx'),
+            ('ra_rb_sx',    'ra > rb sx'),
+            ('ra_rb_dx',    'ra > rb dx'),
+        ]
+        for i, (key, label) in enumerate(interf_defs):
+            ttk.Label(f2, text=label, font=('Arial', 8)).grid(
+                row=i, column=0, sticky='w', padx=4, pady=2)
+            lbl = ttk.Label(f2, text='—', font=('Arial', 9, 'bold'), width=6)
+            lbl.grid(row=i, column=1, padx=8)
+            self._interf_labels[key] = lbl
+
+        # Blocco 3: Grandezze cinematiche
+        f3 = ttk.LabelFrame(self, text="Grandezze Cinematiche")
+        f3.pack(fill=tk.X, padx=10, pady=5)
+        self._kin_labels = {}
+        kin_defs = [
+            ('zona_sx',       'Zona attiva sx [mm]'),
+            ('zona_dx',       'Zona attiva dx [mm]'),
+            ('vs_tip_pin_sx', '|vs/vp|_max tip pignone sx'),
+            ('vs_tip_pin_dx', '|vs/vp|_max tip pignone dx'),
+            ('vs_tip_rack_sx','|vs/vp|_max tip cremagliera sx'),
+            ('vs_tip_rack_dx','|vs/vp|_max tip cremagliera dx'),
+            ('doppio_sx',     'Zona doppio contatto sx [mm]'),
+            ('doppio_dx',     'Zona doppio contatto dx [mm]'),
+        ]
+        for i, (key, label) in enumerate(kin_defs):
+            ttk.Label(f3, text=label, font=('Arial', 8)).grid(
+                row=i, column=0, sticky='w', padx=4, pady=2)
+            lbl = ttk.Label(f3, text='—', font=('Arial', 8))
+            lbl.grid(row=i, column=1, sticky='e', padx=8)
+            self._kin_labels[key] = lbl
+
+    def _status(self, ok: bool, margin_pct=None):
+        """Returns (text, color) for a boolean check."""
+        if not ok:
+            return '✗', '#cc0000'
+        if margin_pct is not None and margin_pct < 10.0:
+            return '⚠', '#cc6600'
+        return '✓', '#006600'
+
+    def refresh(self, kin, z: int):
+        """Update all values from the main window."""
+        # Blocco 1
+        def _set_row(key, val, lim, margin, ok, margin_pct=None):
+            cells = self._g1_rows[key]
+            cells['val'].config(text=f"{val:.3f}")
+            cells['lim'].config(text=f"{lim:.3f}")
+            cells['mar'].config(text=f"{margin:.3f}")
+            txt, col = self._status(ok, margin_pct)
+            cells['sta'].config(text=txt, foreground=col)
+
+        margin_z_sx = z - kin.z_min_sx
+        margin_z_dx = z - kin.z_min_dx
+        _set_row('z_min_sx', kin.z_min_sx, z, margin_z_sx,
+                 not kin.undercut_sx,
+                 margin_z_sx / max(z, 1) * 100)
+        _set_row('z_min_dx', kin.z_min_dx, z, margin_z_dx,
+                 not kin.undercut_dx,
+                 margin_z_dx / max(z, 1) * 100)
+
+        alpha_sx_rad = np.arccos(max(kin.rb_sx / kin.r, 0.0)) if kin.r > 1e-9 else 0.0
+        alpha_dx_rad = np.arccos(max(kin.rb_dx / kin.r, 0.0)) if kin.r > 1e-9 else 0.0
+        ga_sx_limit = kin.r * np.sin(alpha_sx_rad)
+        ga_dx_limit = kin.r * np.sin(alpha_dx_rad)
+        _set_row('ga_sx', kin.ga_sx, ga_sx_limit, ga_sx_limit - kin.ga_sx,
+                 not kin.interference_rack_tip_sx,
+                 (ga_sx_limit - kin.ga_sx) / max(ga_sx_limit, 1e-9) * 100)
+        _set_row('ga_dx', kin.ga_dx, ga_dx_limit, ga_dx_limit - kin.ga_dx,
+                 not kin.interference_rack_tip_dx,
+                 (ga_dx_limit - kin.ga_dx) / max(ga_dx_limit, 1e-9) * 100)
+
+        # Blocco 2
+        def _set_interf(key, ok):
+            txt, col = self._status(ok)
+            self._interf_labels[key].config(text=txt, foreground=col)
+
+        _set_interf('rack_tip_sx', not kin.interference_rack_tip_sx)
+        _set_interf('rack_tip_dx', not kin.interference_rack_tip_dx)
+        _set_interf('ra_rb_sx', kin.ra > kin.rb_sx)
+        _set_interf('ra_rb_dx', kin.ra > kin.rb_dx)
+
+        # Blocco 3
+        def _set_kin(key, val, unit=''):
+            self._kin_labels[key].config(text=f"{val:.4f}{unit}")
+
+        _set_kin('zona_sx',       kin.ga_sx + kin.gf_sx, ' mm')
+        _set_kin('zona_dx',       kin.ga_dx + kin.gf_dx, ' mm')
+        _set_kin('vs_tip_pin_sx', kin.vs_max_tip_pin_sx)
+        _set_kin('vs_tip_pin_dx', kin.vs_max_tip_pin_dx)
+        _set_kin('vs_tip_rack_sx',kin.vs_max_tip_rack_sx)
+        _set_kin('vs_tip_rack_dx',kin.vs_max_tip_rack_dx)
+        doppio_sx = max(0.0, (kin.eps_sx - 1.0) * kin.pb_sx)
+        doppio_dx = max(0.0, (kin.eps_dx - 1.0) * kin.pb_dx)
+        _set_kin('doppio_sx', doppio_sx, ' mm')
+        _set_kin('doppio_dx', doppio_dx, ' mm')
+
+
 class RackPinionVisualizer(tk.Tk):
     def __init__(self):
         super().__init__()
