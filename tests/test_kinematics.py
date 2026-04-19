@@ -178,15 +178,13 @@ def test_no_undercut_with_positive_shift():
 
 
 def test_interference_rack_tip():
-    """ga > r*sin(alpha): interferenza della testa cremagliera."""
-    # Forzare ga grande con ha_cr elevato e alpha piccolo
+    """ga > r*sin(alpha): interferenza della testa cremagliera.
+
+    Con alpha=10°, z=6, x=-0.5, ha_cr=1.5: ga >> r*sin(alpha), interferenza garantita.
+    """
     params = make_params(m=1.0, z=6, alpha_sx_deg=10.0, x=-0.5, ha_cr_coeff=1.5)
     k = compute_kinematics(params)
-    alpha = np.radians(10.0)
-    r = 1.0 * 6 / 2.0
-    limit = r * np.sin(alpha)
-    if k.ga_sx > limit:
-        assert k.interference_rack_tip_sx is True
+    assert k.interference_rack_tip_sx is True  # ga >> r*sin(alpha) for these params
 
 
 def test_no_interference_standard():

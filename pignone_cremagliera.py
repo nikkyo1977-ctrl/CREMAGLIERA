@@ -459,6 +459,7 @@ class RackPinionVisualizer(tk.Tk):
         self.ax = self.fig.add_subplot(1, 3, 1)
         self.ax_zoom = self.fig.add_subplot(1, 3, 2)
         self.ax_kinem = self.fig.add_subplot(1, 3, 3)
+        self.ax_kinem2 = None
 
         self.fig.patch.set_facecolor('#fafafa')
         for a in [self.ax, self.ax_zoom, self.ax_kinem]:
@@ -682,7 +683,14 @@ class RackPinionVisualizer(tk.Tk):
         ax.axhline(0, color='gray', linewidth=0.8, linestyle=':')
 
         # Asse Y destro: |vs/vp|
+        if self.ax_kinem2 is not None:
+            try:
+                self.ax_kinem2.clear()
+                self.ax_kinem2.remove()
+            except Exception:
+                pass
         ax2 = ax.twinx()
+        self.ax_kinem2 = ax2
         ax2.plot(disp, kin.vs_arr, '-', color='#cc6600', linewidth=1.2, alpha=0.7,
                  label='|vs/vp|')
         ax2.set_ylabel('|vs/vp| [-]', fontsize=8, color='#cc6600')
@@ -706,7 +714,10 @@ class RackPinionVisualizer(tk.Tk):
         ax.set_title(
             f'Cinematica 1 Passo  ε_sx={kin.eps_sx:.3f} | ε_dx={kin.eps_dx:.3f}',
             fontsize=9, fontweight='bold')
-        ax.legend(loc='lower right', fontsize='xx-small', framealpha=0.6)
+        lines1, labels1 = ax.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, labels1 + labels2,
+                  loc='lower right', fontsize='xx-small', framealpha=0.6)
         ax.set_xlim(0, disp_end)
         ax.tick_params(labelsize=7)
         step = max(0.1, round(disp_end / 5, 1))
