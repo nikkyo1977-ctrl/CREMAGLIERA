@@ -56,7 +56,60 @@ class KinResult:
 
 
 def compute_kinematics(params: dict) -> KinResult:
-    return KinResult()
+    m = params['m']
+    z = params['z']
+    alpha_sx = np.radians(params['alpha_sx_deg'])
+    alpha_dx = np.radians(params['alpha_dx_deg'])
+    x = params['x']
+    ha_cr = params['ha_cr_coeff'] * m
+    c = params['c_coeff'] * m
+    delta_s = params['delta_s']
+
+    r = m * z / 2.0
+    rb_sx = r * np.cos(alpha_sx)
+    rb_dx = r * np.cos(alpha_dx)
+    hap = (1.0 + x) * m
+    ra = r + hap
+    da = 2.0 * ra
+    hfp = ha_cr + c - x * m
+    rf = r - hfp
+    H = r + x * m
+
+    # Tratto accesso CORRETTO: (ha_cr - x*m) / sin(alpha)
+    ga_sx = (ha_cr - x * m) / np.sin(alpha_sx) if alpha_sx > 1e-6 else 0.0
+    ga_dx = (ha_cr - x * m) / np.sin(alpha_dx) if alpha_dx > 1e-6 else 0.0
+
+    # Tratto recesso
+    gf_sx = (np.sqrt(ra**2 - rb_sx**2) - r * np.sin(alpha_sx)
+             if ra > rb_sx else 0.0)
+    gf_dx = (np.sqrt(ra**2 - rb_dx**2) - r * np.sin(alpha_dx)
+             if ra > rb_dx else 0.0)
+
+    pb_sx = np.pi * m * np.cos(alpha_sx)
+    pb_dx = np.pi * m * np.cos(alpha_dx)
+    eps_sx = (ga_sx + gf_sx) / pb_sx if pb_sx > 1e-9 else 0.0
+    eps_dx = (ga_dx + gf_dx) / pb_dx if pb_dx > 1e-9 else 0.0
+
+    L = np.pi * m * z
+    sp = m * (np.pi / 2.0 + x * np.tan(alpha_sx) + x * np.tan(alpha_dx)) - delta_s
+    scr = m * np.pi / 2.0 + delta_s
+
+    # |v_s/v_p| max adimensionale = |u_max| / r
+    vs_max_tip_pin_sx = abs(gf_sx) / r if r > 1e-9 else 0.0
+    vs_max_tip_pin_dx = abs(gf_dx) / r if r > 1e-9 else 0.0
+    vs_max_tip_rack_sx = abs(ga_sx) / r if r > 1e-9 else 0.0
+    vs_max_tip_rack_dx = abs(ga_dx) / r if r > 1e-9 else 0.0
+
+    return KinResult(
+        r=r, ra=ra, rf=rf, rb_sx=rb_sx, rb_dx=rb_dx, H=H, da=da,
+        ga_sx=ga_sx, gf_sx=gf_sx, ga_dx=ga_dx, gf_dx=gf_dx,
+        eps_sx=eps_sx, eps_dx=eps_dx, pb_sx=pb_sx, pb_dx=pb_dx,
+        sp=sp, scr=scr, L=L,
+        vs_max_tip_pin_sx=vs_max_tip_pin_sx,
+        vs_max_tip_pin_dx=vs_max_tip_pin_dx,
+        vs_max_tip_rack_sx=vs_max_tip_rack_sx,
+        vs_max_tip_rack_dx=vs_max_tip_rack_dx,
+    )
 
 def add_fillet_to_paths(A, B, R):
     if R < 1e-4 or len(A) < 2 or len(B) < 2:
