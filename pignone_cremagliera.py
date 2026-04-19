@@ -474,6 +474,7 @@ class RackPinionVisualizer(tk.Tk):
         self.ax_zoom.set_ylim(-r - zoom_w/2, -r + zoom_w/2)
         self.ax_zoom.set_title(f"Dettaglio Contatto (Zoom {zoom_w}x{zoom_w}mm)", fontsize=10, fontweight='bold')
         
+        self._draw_contact_overlay(self.ax_zoom, kin, rot)
         self._draw_kinematic_diagram(kin, rot)
         self.fig.tight_layout()
         
@@ -569,6 +570,68 @@ class RackPinionVisualizer(tk.Tk):
         step = max(0.1, round(disp_end / 5, 1))
         ax.xaxis.set_major_locator(MultipleLocator(step))
         ax.grid(which='major', linestyle='--', alpha=0.3)
+
+    def _draw_contact_overlay(self, ax, kin, rot: float):
+        """Disegna segmento retta d'azione attiva e punto di contatto istantaneo."""
+        r = kin.r
+        if r < 1e-9:
+            return
+        alpha_sx_rad = np.arccos(max(kin.rb_sx / r, 0.0))
+        alpha_dx_rad = np.arccos(max(kin.rb_dx / r, 0.0))
+
+        # Coordinata di un punto a distanza u lungo la LoA sx dal pitch point (0, -r):
+        # direzione LoA sx: (cos(alpha_sx), sin(alpha_sx))
+        # x = u*cos(alpha_sx),  y = -r + u*sin(alpha_sx)
+        def loa_point_sx(u):
+            return u * np.cos(alpha_sx_rad), -r + u * np.sin(alpha_sx_rad)
+
+        # Coordinata lungo la LoA dx (speculare rispetto all'asse Y):
+        # direzione LoA dx: (-cos(alpha_dx), sin(alpha_dx))  (specchio)
+        # x = -u*cos(alpha_dx),  y = -r + u*sin(alpha_dx)
+        def loa_point_dx(u):
+            return -u * np.cos(alpha_dx_rad), -r + u * np.sin(alpha_dx_rad)
+
+        # --- Segmenti zona attiva sx ---
+        if kin.ga_sx > 1e-6:   # tratto accesso sx (u da -ga_sx a 0), colore arancio
+            p_start = loa_point_sx(-kin.ga_sx)
+            p_pitch = loa_point_sx(0.0)
+            ax.plot([p_start[0], p_pitch[0]], [p_start[1], p_pitch[1]],
+                    '-', color='orange', linewidth=2.5, alpha=0.8, zorder=8)
+
+        if kin.gf_sx > 1e-6:   # tratto recesso sx (u da 0 a gf_sx), colore verde
+            p_pitch = loa_point_sx(0.0)
+            p_end = loa_point_sx(kin.gf_sx)
+            ax.plot([p_pitch[0], p_end[0]], [p_pitch[1], p_end[1]],
+                    '-', color='limegreen', linewidth=2.5, alpha=0.8, zorder=8)
+
+        # --- Segmenti zona attiva dx ---
+        if kin.ga_dx > 1e-6:
+            p_start = loa_point_dx(-kin.ga_dx)
+            p_pitch = loa_point_dx(0.0)
+            ax.plot([p_start[0], p_pitch[0]], [p_start[1], p_pitch[1]],
+                    '-', color='orange', linewidth=2.5, alpha=0.5, zorder=8)
+
+        if kin.gf_dx > 1e-6:
+            p_pitch = loa_point_dx(0.0)
+            p_end = loa_point_dx(kin.gf_dx)
+            ax.plot([p_pitch[0], p_end[0]], [p_pitch[1], p_end[1]],
+                    '-', color='limegreen', linewidth=2.5, alpha=0.5, zorder=8)
+
+        # --- Punto di contatto istantaneo ---
+        pitch_angle = kin.theta_arr[-1] if len(kin.theta_arr) > 0 else 1.0
+        rot_mod = rot % pitch_angle if pitch_angle > 1e-9 else 0.0
+
+        u_sx_now = kin.rb_sx * rot_mod - kin.ga_sx
+        if -kin.ga_sx <= u_sx_now <= kin.gf_sx:
+            cx, cy = loa_point_sx(u_sx_now)
+            ax.plot(cx, cy, 'o', color='limegreen', markersize=8,
+                    markeredgecolor='darkgreen', zorder=15)
+
+        u_dx_now = kin.rb_dx * rot_mod - kin.ga_dx
+        if -kin.ga_dx <= u_dx_now <= kin.gf_dx:
+            cx, cy = loa_point_dx(u_dx_now)
+            ax.plot(cx, cy, 'o', color='limegreen', markersize=8,
+                    markeredgecolor='darkgreen', alpha=0.7, zorder=15)
 
     def draw_pinion(self, ax, m, z, alpha_sx, alpha_dx, x, delta_s, rf, ra, rot, rho_ap, rho_fp):
         r = m * z / 2.0
